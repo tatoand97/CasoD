@@ -62,6 +62,7 @@ try
 
     PrintReconciliationSummary(orderStatus, routerStatus, refundStatus, clarifierStatus);
     PrintWorkflowBindings(orderIdentity, routerStatus, refundStatus, clarifierStatus);
+    PrintWorkflowInstructions();
     log.Info("BOOTSTRAP", "Workflow-first D.2 bootstrap completed.");
 }
 catch (OperationCanceledException) when (cancellationTokenSource.IsCancellationRequested)
@@ -129,13 +130,26 @@ static void PrintWorkflowBindings(
     ReconciliationResult clarifierStatus)
 {
     Console.WriteLine("Workflow Binding Summary");
-    Console.WriteLine("Authoritative workflow asset: workflows/caso-d-router.workflow.yaml");
-    Console.WriteLine($"FOUNDRY_AGENT_ROUTER={routerStatus.AgentName} | AgentId={routerStatus.AgentId}");
-    Console.WriteLine($"FOUNDRY_AGENT_ORDER={orderIdentity.AgentName} | AgentId={orderIdentity.AgentId}");
-    Console.WriteLine($"FOUNDRY_AGENT_REFUND={refundStatus.AgentName} | AgentId={refundStatus.AgentId}");
-    Console.WriteLine($"FOUNDRY_AGENT_CLARIFIER={clarifierStatus.AgentName} | AgentId={clarifierStatus.AgentId}");
+    Console.WriteLine("Workflow repo artifact: workflows/caso-d-router.workflow.yaml");
+    Console.WriteLine($"RouterAgent => Name={routerStatus.AgentName} | AgentId={routerStatus.AgentId}");
+    Console.WriteLine($"OrderAgent => Name={orderIdentity.AgentName} | AgentId={orderIdentity.AgentId}");
+    Console.WriteLine($"RefundAgent => Name={refundStatus.AgentName} | AgentId={refundStatus.AgentId}");
+    Console.WriteLine($"ClarifierAgent => Name={clarifierStatus.AgentName} | AgentId={clarifierStatus.AgentId}");
     Console.WriteLine();
-    Console.WriteLine("Use agent names above when wiring the workflow in Foundry or VS Code.");
+    Console.WriteLine("Use the agent names above when binding workflow nodes in Foundry or VS Code for Web.");
     Console.WriteLine("This program validates agents and prints bindings only; it is not the D.2 runtime router.");
+    Console.WriteLine("Do not deploy workflows from this .NET app.");
+    Console.WriteLine();
+}
+
+static void PrintWorkflowInstructions()
+{
+    Console.WriteLine("Manual Workflow Path");
+    Console.WriteLine("1. Create the base workflow in the Foundry portal.");
+    Console.WriteLine("2. Open it in YAML or VS Code for Web.");
+    Console.WriteLine("3. Merge the repo workflow artifact at workflows/caso-d-router.workflow.yaml.");
+    Console.WriteLine("4. Bind RouterAgent, OrderAgent, RefundAgent, and ClarifierAgent.");
+    Console.WriteLine("5. Deploy from Foundry or VS Code for Web.");
+    Console.WriteLine("6. Test order, refund, clarify, and reject prompts.");
     Console.WriteLine();
 }

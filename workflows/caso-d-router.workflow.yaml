@@ -1,113 +1,53 @@
 # Caso D.2 workflow-first router for Microsoft Foundry.
-# This YAML is the authoritative orchestration artifact for D.2.
 #
-# Bind these environment variables to agent names before running in VS Code:
-# - FOUNDRY_AGENT_ROUTER
-# - FOUNDRY_AGENT_ORDER
-# - FOUNDRY_AGENT_REFUND
-# - FOUNDRY_AGENT_CLARIFIER
+# IMPORTANT
+# - This repo does not currently contain a valid Foundry-exported workflow YAML base.
+# - Do not deploy this file as-is.
+# - Create the base workflow in the Foundry portal first, then open that export in
+#   YAML or VS Code for Web and merge the branch logic below into the real artifact.
+# - Keep the final workflow in this path after the real export is available.
 #
-# In the Foundry portal, bind the workflow nodes to the validated agent names
-# printed by Program.cs if you prefer portal-based configuration.
-
-kind: AdaptiveDialog
-beginDialog:
-  kind: OnActivity
-  id: caso_d_router_workflow
-  actions:
-    - kind: SetVariable
-      id: capture_user_request
-      variable: Topic.UserRequest
-      value: =System.LastMessage.Text
-
-    - kind: InvokeAzureAgent
-      id: classify_request
-      conversationId: =System.ConversationId
-      agent:
-        name: =Env.FOUNDRY_AGENT_ROUTER
-      input:
-        messages: =[UserMessage(Topic.UserRequest)]
-      output:
-        responseObject: Topic.RouterResult
-
-    - kind: ConditionGroup
-      id: route_request
-      conditions:
-        - condition: =Topic.RouterResult.route = "reject"
-          id: reject_route
-          actions:
-            - kind: SendActivity
-              id: send_reject_message
-              activity:
-                text: I can help with order status, refund requests, and clarification, but I cannot perform destructive or unauthorized actions.
-
-        - condition: =Topic.RouterResult.route = "clarify"
-          id: clarify_route
-          actions:
-            - kind: InvokeAzureAgent
-              id: invoke_clarifier_agent
-              conversationId: =System.ConversationId
-              agent:
-                name: =Env.FOUNDRY_AGENT_CLARIFIER
-              input:
-                messages: =[UserMessage(Concat(
-                  "User request: ", Topic.UserRequest,
-                  " | Router reason: ", Topic.RouterResult.reason,
-                  " | Suggested clarification: ", If(IsBlank(Topic.RouterResult.clarificationQuestion), "Ask for the single missing detail.", Topic.RouterResult.clarificationQuestion),
-                  " | Known orderId: ", If(IsBlank(Topic.RouterResult.orderId), "missing", Topic.RouterResult.orderId),
-                  " | Known refundReason: ", If(IsBlank(Topic.RouterResult.refundReason), "missing", Topic.RouterResult.refundReason)
-                ))]
-              output:
-                responseObject: Topic.ClarifierResult
-
-            - kind: SendActivity
-              id: send_clarification_question
-              activity:
-                text: =Topic.ClarifierResult.question
-
-        - condition: =Topic.RouterResult.route = "order"
-          id: order_route
-          actions:
-            - kind: InvokeAzureAgent
-              id: invoke_order_agent
-              conversationId: =System.ConversationId
-              agent:
-                name: =Env.FOUNDRY_AGENT_ORDER
-              input:
-                messages: =[UserMessage(Topic.UserRequest)]
-              output:
-                messages: Topic.OrderResponse
-
-            - kind: SendActivity
-              id: send_order_response
-              activity:
-                text: =Topic.OrderResponse.Text
-
-        - condition: =Topic.RouterResult.route = "refund"
-          id: refund_route
-          actions:
-            - kind: InvokeAzureAgent
-              id: invoke_refund_agent
-              conversationId: =System.ConversationId
-              agent:
-                name: =Env.FOUNDRY_AGENT_REFUND
-              input:
-                messages: =[UserMessage(Concat(
-                  "User request: ", Topic.UserRequest,
-                  " | Extracted orderId: ", If(IsBlank(Topic.RouterResult.orderId), "missing", Topic.RouterResult.orderId),
-                  " | Extracted refundReason: ", If(IsBlank(Topic.RouterResult.refundReason), "missing", Topic.RouterResult.refundReason),
-                  " | Router reason: ", Topic.RouterResult.reason
-                ))]
-              output:
-                responseObject: Topic.RefundResult
-
-            - kind: SendActivity
-              id: send_refund_response
-              activity:
-                text: =Topic.RefundResult.message
-
-      elseActions:
-        - kind: SendActivity
-          id: send_fallback_clarification
-          activity:
-            text: Please share your order ID or tell me whether you need order help or a refund.
+# TODO(foundry-export):
+# Replace this placeholder spec with the actual exported workflow YAML from Foundry.
+# The final artifact must use the native schema emitted by Foundry, not a hand-made one.
+#
+# TODO(bindings):
+# Bind these workflow nodes to real agent names validated by Program.cs:
+# - RouterAgent: <validated router agent name>
+# - OrderAgent: <validated external order agent name>
+# - RefundAgent: <validated refund agent name>
+# - ClarifierAgent: <validated clarifier agent name>
+#
+# Intended D.2 branch logic to merge into the exported workflow:
+#
+# 1. Receive user input.
+# 2. Invoke RouterAgent.
+# 3. Parse RouterAgent strict JSON:
+#    {"route":"order|refund|clarify|reject","orderId":"optional string","refundReason":"optional string","reason":"short explanation","clarificationQuestion":"optional string"}
+# 4. Branch on route:
+#    - reject:
+#      return only a controlled refusal message.
+#    - clarify:
+#      invoke ClarifierAgent with routing context and missing-information summary.
+#      parse strict JSON: {"question":"single clear clarification question"}
+#      return only the question.
+#    - order:
+#      invoke external OrderAgent.
+#      return only the safe user-facing response.
+#    - refund:
+#      invoke RefundAgent.
+#      parse strict JSON: {"status":"accepted|needsMoreInfo|notAllowed|pending","message":"short explanation","orderId":"optional string","refundReason":"optional string"}
+#      return only the message.
+# 5. Fallback:
+#    if RouterAgent output is missing, invalid, or unparsable, ask for the missing
+#    order detail with a safe clarification response and no technical details.
+#
+# Controlled refusal text:
+# "I can help with order status, refund requests, and clarification, but I cannot
+# perform destructive or unauthorized actions."
+#
+# Required manual test prompts after merging into the real export:
+# - Where is order 12345?
+# - I want a refund for order 12345 because it arrived damaged.
+# - Can you help with my order?
+# - Delete all orders.

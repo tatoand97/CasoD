@@ -1,58 +1,46 @@
-# Caso D.2 Workflow-Based Dynamic Routing
+# Caso D.2 Workflow-First Dynamic Routing
 
-This repository implements Caso D.2 as a Microsoft Foundry workflow-first solution.
+This repository implements Caso D.2 as a Microsoft Foundry Workflow-based router. The workflow is the orchestration layer. `RouterAgent` classifies requests, specialized agents execute their branches, and `Program.cs` remains only a bootstrap and validation utility.
 
-The authoritative D.2 artifact is [workflows/caso-d-router.workflow.yaml](workflows/caso-d-router.workflow.yaml), not a custom C# manager/orchestrator. The workflow is the routing layer. `Program.cs` is only a bootstrap and validation utility for reconciling prompt agents and validating the external `OrderAgent` reused from the earlier case.
+The workflow artifact lives at [workflows/caso-d-router.workflow.yaml](workflows/caso-d-router.workflow.yaml). Because this repo does not include a valid Foundry-exported workflow base yet, that file is a merge-ready workflow spec with TODO markers. Create the base workflow in Foundry first, then merge the repo artifact into the real export in Foundry portal or VS Code for Web.
 
 ## Architecture
 
 ```text
 User
-  ↓
+  |
+  v
 Foundry Workflow
-  ↓
+  |
+  v
 RouterAgent
-  ├─ OrderAgent → MCP → APIM → API REST
-  ├─ RefundAgent
-  ├─ ClarifierAgent / Ask Question
-  └─ Reject response
+  |- OrderAgent -> MCP -> APIM -> API REST
+  |- RefundAgent
+  |- ClarifierAgent / Ask Question
+  `- Reject response
 ```
-
-## What This Repo Demonstrates
-
-- `RouterAgent` performs classification only and returns strict JSON routing metadata.
-- `OrderAgent` is reused as an external MCP-enabled capability from the earlier case.
-- `RefundAgent` handles refund flows with strict JSON output.
-- `ClarifierAgent` produces one clarification question in strict JSON.
-- The Foundry workflow performs explicit branching for `order`, `refund`, `clarify`, and `reject`.
-- Least privilege is preserved:
-  - `RouterAgent`: no MCP, no tools
-  - `OrderAgent`: existing MCP-enabled capability reused as-is
-  - `RefundAgent`: no direct MCP
-  - `ClarifierAgent`: no tools
 
 ## What Remains In C#
 
 - Validate access to the Foundry project.
-- Validate the configured external `OrderAgentId`.
-- Reconcile `RouterAgent`, `RefundAgent`, and `ClarifierAgent` as prompt agents.
-- Print the agent names and ids needed to bind the workflow in Foundry or VS Code.
+- Validate the required external `OrderAgentId`.
+- Reconcile `RouterAgent`, `RefundAgent`, and `ClarifierAgent`.
+- Print the agent names and ids required to bind the workflow.
 
-`Program.cs` does not implement D.2 runtime routing. It does not create a manager agent. It does not orchestrate the conversation in C#.
+`Program.cs` does not run the authoritative D.2 routing flow. It does not create `ManagerAgent`. It does not manually orchestrate end-to-end routing in C#.
 
-## What Is Declarative YAML
+## What Is In Workflow YAML
 
-- [workflows/caso-d-router.workflow.yaml](workflows/caso-d-router.workflow.yaml) is the D.2 orchestration artifact.
-- The workflow captures user input, invokes `RouterAgent`, branches on the returned `route`, and forwards the request to the specialized branch.
-- The YAML uses agent-name bindings through environment variables:
-  - `FOUNDRY_AGENT_ROUTER`
-  - `FOUNDRY_AGENT_ORDER`
-  - `FOUNDRY_AGENT_REFUND`
-  - `FOUNDRY_AGENT_CLARIFIER`
+- [workflows/caso-d-router.workflow.yaml](workflows/caso-d-router.workflow.yaml) is the repo artifact for the D.2 workflow.
+- `RouterAgent` classifies into `order`, `refund`, `clarify`, or `reject`.
+- `OrderAgent` is reused from the prior MCP-enabled case and remains an external dependency supplied by `OrderAgentId`.
+- `RefundAgent` and `ClarifierAgent` are prompt agents with strict JSON contracts.
+- `clarify` and `reject` are explicit workflow branches.
+- Workflow YAML is edited and deployed through the Foundry portal or VS Code for Web, not through the .NET SDK used in this repo.
 
 ## Configuration
 
-`appsettings.json` contains the bootstrap inputs:
+`appsettings.json` contains the only required bootstrap inputs:
 
 ```json
 {
@@ -62,44 +50,23 @@ RouterAgent
 }
 ```
 
-- `ProjectEndpoint`: Foundry project endpoint.
-- `ModelDeploymentName`: model deployment used for `RouterAgent`, `RefundAgent`, and `ClarifierAgent`.
-- `OrderAgentId`: external MCP-enabled `OrderAgent` to reuse in the workflow.
+## Manual Deployment In Foundry
 
-## Deploy And Test In Foundry
+1. Create the base workflow in Foundry portal.
+2. Open it in YAML or VS Code for Web.
+3. Apply the repo's YAML changes or merge with [workflows/caso-d-router.workflow.yaml](workflows/caso-d-router.workflow.yaml).
+4. Bind `RouterAgent`, `OrderAgent`, `RefundAgent`, and `ClarifierAgent`.
+5. Deploy from VS Code for Web or Foundry.
+6. Test the workflow with the four validation prompts.
 
-### Bootstrap agents
+## Bootstrap And Binding Steps
 
 1. Update `appsettings.json` with a real Foundry project endpoint, model deployment, and external `OrderAgentId`.
 2. Run `dotnet run`.
-3. Note the printed agent names and ids. The workflow uses agent names for bindings.
+3. Capture the printed `RouterAgent`, `RefundAgent`, and `ClarifierAgent` names and ids, plus the validated external `OrderAgent` name and id.
+4. Bind those agent names to the workflow nodes in Foundry.
 
-### Use the workflow in Foundry portal
-
-1. Open your Foundry project in the portal.
-2. Create or open a workflow.
-3. Switch to YAML view if needed.
-4. Paste or import [workflows/caso-d-router.workflow.yaml](workflows/caso-d-router.workflow.yaml).
-5. Bind the four agents in the project so the workflow references the validated agent names.
-6. Save a new workflow version and run it in the Foundry chat canvas.
-
-### Use the workflow in VS Code
-
-1. Open the repo in VS Code with the Microsoft Foundry extension.
-2. Set these environment variables to the agent names printed by `dotnet run`:
-   - `FOUNDRY_AGENT_ROUTER`
-   - `FOUNDRY_AGENT_ORDER`
-   - `FOUNDRY_AGENT_REFUND`
-   - `FOUNDRY_AGENT_CLARIFIER`
-3. Set `FOUNDRY_PROJECT_ENDPOINT` to your Foundry project endpoint.
-4. Open [workflows/caso-d-router.workflow.yaml](workflows/caso-d-router.workflow.yaml).
-5. Use the extension’s workflow deploy/run commands.
-
-Note: the current VS Code local declarative workflow runner from the installed Foundry extension expects .NET 9 for local workflow execution.
-
-## Manual Validation Scenarios
-
-Run these prompts against the workflow:
+## Manual Validation Prompts
 
 - `Where is order 12345?`
 - `I want a refund for order 12345 because it arrived damaged.`
@@ -108,13 +75,13 @@ Run these prompts against the workflow:
 
 Expected routing:
 
-- `order` → `OrderAgent`
-- `refund` → `RefundAgent`
-- `clarify` → `ClarifierAgent`
-- `reject` → controlled refusal message
+- `order` -> `OrderAgent`
+- `refund` -> `RefundAgent`
+- `clarify` -> `ClarifierAgent`
+- `reject` -> controlled refusal
 
-## Intentionally No Longer Used
+## No Longer Used
 
 - `ManagerAgent` custom routing is not the D.2 implementation.
-- Runtime routing via manually serialized `{"type":"agent","agent_id":"..."}` tools is not the authoritative solution.
-- Manager-only smoke tests are removed because they misrepresented D.2 as custom orchestration rather than workflow orchestration.
+- Manually serialized `{"type":"agent","agent_id":"..."}` tools are not the authoritative D.2 path.
+- Manager-only smoke tests are not part of the workflow-first design.

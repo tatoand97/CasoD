@@ -19,7 +19,7 @@ internal static class AgentInstructionTemplates
         Rules:
         - Use route="order" when the user asks for order status, order details, shipment status, or other order information.
         - Use route="refund" when the user asks for a refund, return, reimbursement, or money back.
-        - Use route="clarify" when the request is ambiguous or required identifiers or details are missing.
+        - Use route="clarify" when the request is ambiguous or required identifiers/details are missing.
         - Use route="reject" when the user requests destructive, unauthorized, or unsupported actions, including deleting all orders.
         - Extract orderId when present.
         - Extract refundReason when present.
