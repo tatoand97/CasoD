@@ -27,7 +27,7 @@ RouterAgent
 - Reconcile `RouterAgent`, `RefundAgent`, and `ClarifierAgent`.
 - Print the agent names and ids required to bind the workflow.
 
-`Program.cs` does not run the authoritative D.2 routing flow. It does not create `ManagerAgent`. It does not manually orchestrate end-to-end routing in C#.
+`Program.cs` does not run the authoritative D.2 routing flow. It does not manually orchestrate end-to-end routing in C#.
 
 ## What Is In Workflow YAML
 
@@ -82,6 +82,4 @@ Expected routing:
 
 ## No Longer Used
 
-- `ManagerAgent` custom routing is not the D.2 implementation.
-- Manually serialized `{"type":"agent","agent_id":"..."}` tools are not the authoritative D.2 path.
-- Manager-only smoke tests are not part of the workflow-first design.
+- `ManagerAgent` custom routing is retired and not used in the workflow-first D.2 implementation.
