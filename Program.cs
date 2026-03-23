@@ -20,7 +20,6 @@ try
     log.Info("CONFIG", $"Endpoint: {config.ProjectEndpoint}");
     log.Info("CONFIG", $"Deployment: {config.ModelDeploymentName}");
     log.Info("CONFIG", $"ORDER_AGENT_ID provided: {!string.IsNullOrWhiteSpace(config.OrderAgentId)}");
-    log.Info("CONFIG", $"REFUND_AGENT_ID provided: {!string.IsNullOrWhiteSpace(config.RefundAgentId)}");
 
     DefaultAzureCredential credential = new(new DefaultAzureCredentialOptions
     {
@@ -31,9 +30,6 @@ try
 
     AgentValidationService validationService = new(projectClient, log);
     AgentReconciliationService reconciliationService = new(projectClient, log);
-    ResponsePollingService pollingService = new(log);
-    AgentResponseInspector inspector = new();
-    SmokeTestRunner smokeTestRunner = new(projectClient, pollingService, inspector, log);
 
     await validationService.ValidateProjectAccessAsync(cancellationTokenSource.Token);
 
@@ -46,34 +42,17 @@ try
         agentId: orderIdentity.AgentId,
         version: orderIdentity.AgentVersion);
 
-    ResolvedAgentIdentity refundIdentity;
-    ReconciliationResult refundStatus;
+    PromptAgentDefinition routerDefinition = AgentDefinitionFactory.CreateRouter(config.ModelDeploymentName);
+    ReconciliationResult routerStatus = await reconciliationService.ReconcileAsync(
+        AgentNames.Router,
+        routerDefinition,
+        cancellationTokenSource.Token);
 
-    if (!string.IsNullOrWhiteSpace(config.RefundAgentId))
-    {
-        refundIdentity = await validationService.ValidateAgentIdAccessibleAsync(
-            config.RefundAgentId,
-            "REFUND_AGENT_ID",
-            cancellationTokenSource.Token);
-
-        refundStatus = ReconciliationResult.CreateExternalValidated(
-            agentName: refundIdentity.AgentName,
-            agentId: refundIdentity.AgentId,
-            version: refundIdentity.AgentVersion);
-    }
-    else
-    {
-        PromptAgentDefinition refundDefinition = AgentDefinitionFactory.CreateRefund(config.ModelDeploymentName);
-        refundStatus = await reconciliationService.ReconcileAsync(
-            AgentNames.Refund,
-            refundDefinition,
-            cancellationTokenSource.Token);
-
-        refundIdentity = new ResolvedAgentIdentity(
-            AgentId: refundStatus.AgentId,
-            AgentName: refundStatus.AgentName,
-            AgentVersion: refundStatus.Version);
-    }
+    PromptAgentDefinition refundDefinition = AgentDefinitionFactory.CreateRefund(config.ModelDeploymentName);
+    ReconciliationResult refundStatus = await reconciliationService.ReconcileAsync(
+        AgentNames.Refund,
+        refundDefinition,
+        cancellationTokenSource.Token);
 
     PromptAgentDefinition clarifierDefinition = AgentDefinitionFactory.CreateClarifier(config.ModelDeploymentName);
     ReconciliationResult clarifierStatus = await reconciliationService.ReconcileAsync(
@@ -81,47 +60,9 @@ try
         clarifierDefinition,
         cancellationTokenSource.Token);
 
-    PromptAgentDefinition managerDefinition = AgentDefinitionFactory.CreateManager(
-        modelDeployment: config.ModelDeploymentName,
-        orderAgentId: orderIdentity.AgentId,
-        refundAgentId: refundIdentity.AgentId,
-        clarifierAgentId: clarifierStatus.AgentId);
-
-    ReconciliationResult managerStatus = await reconciliationService.ReconcileAsync(
-        AgentNames.Manager,
-        managerDefinition,
-        cancellationTokenSource.Token);
-
-    PrintReconciliationSummary(orderStatus, refundStatus, clarifierStatus, managerStatus);
-
-    Dictionary<string, string> labelsByAgentId = new(StringComparer.OrdinalIgnoreCase)
-    {
-        [orderIdentity.AgentId] = "OrderAgent",
-        [refundIdentity.AgentId] = "RefundAgent",
-        [clarifierStatus.AgentId] = "ClarifierAgent",
-        [managerStatus.AgentId] = "ManagerAgent"
-    };
-
-    Dictionary<string, string> labelsByAgentName = new(StringComparer.OrdinalIgnoreCase)
-    {
-        [orderIdentity.AgentName] = "OrderAgent",
-        [refundIdentity.AgentName] = "RefundAgent",
-        [clarifierStatus.AgentName] = "ClarifierAgent",
-        [managerStatus.AgentName] = "ManagerAgent"
-    };
-
-    await smokeTestRunner.RunAsync(
-        managerAgentName: managerStatus.AgentName,
-        labelsByAgentId: labelsByAgentId,
-        labelsByAgentName: labelsByAgentName,
-        cancellationToken: cancellationTokenSource.Token);
-
-    log.Info("SMOKE_TEST", "Completed.");
-}
-catch (TimeoutException ex)
-{
-    log.Error("SMOKE_TEST", ex.Message);
-    Environment.ExitCode = 1;
+    PrintReconciliationSummary(orderStatus, routerStatus, refundStatus, clarifierStatus);
+    PrintWorkflowBindings(orderIdentity, routerStatus, refundStatus, clarifierStatus);
+    log.Info("BOOTSTRAP", "Workflow-first D.2 bootstrap completed.");
 }
 catch (OperationCanceledException) when (cancellationTokenSource.IsCancellationRequested)
 {
@@ -179,4 +120,22 @@ static void WriteClientError(ClientResultException ex, ConsoleLog log)
         log.Error("AZURE", $"RequestId: {requestId}");
         log.Error("AZURE", $"ClientRequestId: {clientRequestId}");
     }
+}
+
+static void PrintWorkflowBindings(
+    ResolvedAgentIdentity orderIdentity,
+    ReconciliationResult routerStatus,
+    ReconciliationResult refundStatus,
+    ReconciliationResult clarifierStatus)
+{
+    Console.WriteLine("Workflow Binding Summary");
+    Console.WriteLine("Authoritative workflow asset: workflows/caso-d-router.workflow.yaml");
+    Console.WriteLine($"FOUNDRY_AGENT_ROUTER={routerStatus.AgentName} | AgentId={routerStatus.AgentId}");
+    Console.WriteLine($"FOUNDRY_AGENT_ORDER={orderIdentity.AgentName} | AgentId={orderIdentity.AgentId}");
+    Console.WriteLine($"FOUNDRY_AGENT_REFUND={refundStatus.AgentName} | AgentId={refundStatus.AgentId}");
+    Console.WriteLine($"FOUNDRY_AGENT_CLARIFIER={clarifierStatus.AgentName} | AgentId={clarifierStatus.AgentId}");
+    Console.WriteLine();
+    Console.WriteLine("Use agent names above when wiring the workflow in Foundry or VS Code.");
+    Console.WriteLine("This program validates agents and prints bindings only; it is not the D.2 runtime router.");
+    Console.WriteLine();
 }

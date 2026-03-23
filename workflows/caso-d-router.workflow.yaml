@@ -1,0 +1,113 @@
+# Caso D.2 workflow-first router for Microsoft Foundry.
+# This YAML is the authoritative orchestration artifact for D.2.
+#
+# Bind these environment variables to agent names before running in VS Code:
+# - FOUNDRY_AGENT_ROUTER
+# - FOUNDRY_AGENT_ORDER
+# - FOUNDRY_AGENT_REFUND
+# - FOUNDRY_AGENT_CLARIFIER
+#
+# In the Foundry portal, bind the workflow nodes to the validated agent names
+# printed by Program.cs if you prefer portal-based configuration.
+
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnActivity
+  id: caso_d_router_workflow
+  actions:
+    - kind: SetVariable
+      id: capture_user_request
+      variable: Topic.UserRequest
+      value: =System.LastMessage.Text
+
+    - kind: InvokeAzureAgent
+      id: classify_request
+      conversationId: =System.ConversationId
+      agent:
+        name: =Env.FOUNDRY_AGENT_ROUTER
+      input:
+        messages: =[UserMessage(Topic.UserRequest)]
+      output:
+        responseObject: Topic.RouterResult
+
+    - kind: ConditionGroup
+      id: route_request
+      conditions:
+        - condition: =Topic.RouterResult.route = "reject"
+          id: reject_route
+          actions:
+            - kind: SendActivity
+              id: send_reject_message
+              activity:
+                text: I can help with order status, refund requests, and clarification, but I cannot perform destructive or unauthorized actions.
+
+        - condition: =Topic.RouterResult.route = "clarify"
+          id: clarify_route
+          actions:
+            - kind: InvokeAzureAgent
+              id: invoke_clarifier_agent
+              conversationId: =System.ConversationId
+              agent:
+                name: =Env.FOUNDRY_AGENT_CLARIFIER
+              input:
+                messages: =[UserMessage(Concat(
+                  "User request: ", Topic.UserRequest,
+                  " | Router reason: ", Topic.RouterResult.reason,
+                  " | Suggested clarification: ", If(IsBlank(Topic.RouterResult.clarificationQuestion), "Ask for the single missing detail.", Topic.RouterResult.clarificationQuestion),
+                  " | Known orderId: ", If(IsBlank(Topic.RouterResult.orderId), "missing", Topic.RouterResult.orderId),
+                  " | Known refundReason: ", If(IsBlank(Topic.RouterResult.refundReason), "missing", Topic.RouterResult.refundReason)
+                ))]
+              output:
+                responseObject: Topic.ClarifierResult
+
+            - kind: SendActivity
+              id: send_clarification_question
+              activity:
+                text: =Topic.ClarifierResult.question
+
+        - condition: =Topic.RouterResult.route = "order"
+          id: order_route
+          actions:
+            - kind: InvokeAzureAgent
+              id: invoke_order_agent
+              conversationId: =System.ConversationId
+              agent:
+                name: =Env.FOUNDRY_AGENT_ORDER
+              input:
+                messages: =[UserMessage(Topic.UserRequest)]
+              output:
+                messages: Topic.OrderResponse
+
+            - kind: SendActivity
+              id: send_order_response
+              activity:
+                text: =Topic.OrderResponse.Text
+
+        - condition: =Topic.RouterResult.route = "refund"
+          id: refund_route
+          actions:
+            - kind: InvokeAzureAgent
+              id: invoke_refund_agent
+              conversationId: =System.ConversationId
+              agent:
+                name: =Env.FOUNDRY_AGENT_REFUND
+              input:
+                messages: =[UserMessage(Concat(
+                  "User request: ", Topic.UserRequest,
+                  " | Extracted orderId: ", If(IsBlank(Topic.RouterResult.orderId), "missing", Topic.RouterResult.orderId),
+                  " | Extracted refundReason: ", If(IsBlank(Topic.RouterResult.refundReason), "missing", Topic.RouterResult.refundReason),
+                  " | Router reason: ", Topic.RouterResult.reason
+                ))]
+              output:
+                responseObject: Topic.RefundResult
+
+            - kind: SendActivity
+              id: send_refund_response
+              activity:
+                text: =Topic.RefundResult.message
+
+      elseActions:
+        - kind: SendActivity
+          id: send_fallback_clarification
+          activity:
+            text: Please share your order ID or tell me whether you need order help or a refund.

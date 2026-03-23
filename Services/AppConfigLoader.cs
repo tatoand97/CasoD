@@ -17,8 +17,7 @@ internal static class AppConfigLoader
             string template = @"{
   ""ProjectEndpoint"": ""https://contoso.foundry.microsoft.com/api/projects/<project-id>"",
   ""ModelDeploymentName"": ""deployment-name"",
-  ""OrderAgentId"": ""order-agent-id"",
-  ""RefundAgentId"": null
+  ""OrderAgentId"": ""order-agent-id""
 }";
 
             File.WriteAllText(settingsPath, template);
@@ -57,35 +56,16 @@ internal static class AppConfigLoader
             return value.Trim();
         }
 
-        static string? GetOptional(JsonElement root, string key)
-        {
-            if (!root.TryGetProperty(key, out JsonElement prop) || prop.ValueKind == JsonValueKind.Null)
-            {
-                return null;
-            }
-
-            if (prop.ValueKind == JsonValueKind.String)
-            {
-                string? s = prop.GetString();
-                return string.IsNullOrWhiteSpace(s) ? null : s.Trim();
-            }
-
-            string asText = prop.ToString();
-            return string.IsNullOrWhiteSpace(asText) ? null : asText.Trim();
-        }
-
         string endpointRaw = GetRequired(root, "ProjectEndpoint");
         string deployment = GetRequired(root, "ModelDeploymentName");
         string orderAgentId = GetRequired(root, "OrderAgentId");
-        string? refundAgentId = GetOptional(root, "RefundAgentId");
 
         Uri endpoint = ValidateProjectEndpoint(endpointRaw);
 
         return new AppConfig(
             ProjectEndpoint: endpoint,
             ModelDeploymentName: deployment,
-            OrderAgentId: orderAgentId,
-            RefundAgentId: refundAgentId);
+            OrderAgentId: orderAgentId);
     }
 
     private static Uri ValidateProjectEndpoint(string rawEndpoint)

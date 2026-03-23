@@ -7,11 +7,11 @@ namespace CasoD.Agents;
 internal sealed record AgentStructuralSignature(
     string Model,
     string Instructions,
-    IReadOnlyList<string> ToolAgentIds)
+    IReadOnlyList<string> ToolPayloads)
 {
     public string ToCanonicalJson()
     {
-        List<string> ordered = [.. ToolAgentIds.Order(StringComparer.Ordinal)];
+        List<string> ordered = [.. ToolPayloads.Order(StringComparer.Ordinal)];
         return JsonSerializer.Serialize(new
         {
             model = Model,
@@ -28,35 +28,61 @@ internal sealed record AgentStructuralSignature(
         JsonElement root = doc.RootElement;
         string model = ReadString(root, "model", "Model");
         string instructions = NormalizeInstructions(ReadString(root, "instructions", "Instructions"));
-        List<string> toolAgentIds = [];
+        List<string> toolPayloads = [];
 
         if (TryGetPropertyCaseInsensitive(root, "tools", out JsonElement tools) &&
             tools.ValueKind == JsonValueKind.Array)
         {
             foreach (JsonElement tool in tools.EnumerateArray())
             {
-                string type = ReadString(tool, "type", "Type");
-                if (!string.Equals(type, "agent", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                string agentId = ReadString(tool, "agent_id", "agentId", "AgentId");
-                if (!string.IsNullOrWhiteSpace(agentId))
-                {
-                    toolAgentIds.Add(agentId.Trim());
-                }
+                toolPayloads.Add(SerializeCanonicalJson(tool));
             }
         }
 
-        toolAgentIds.Sort(StringComparer.Ordinal);
-        return new AgentStructuralSignature(model, instructions, toolAgentIds);
+        toolPayloads.Sort(StringComparer.Ordinal);
+        return new AgentStructuralSignature(model, instructions, toolPayloads);
     }
 
     private static string NormalizeInstructions(string value) =>
         value.Replace("\r\n", "\n", StringComparison.Ordinal)
              .Replace('\r', '\n')
              .Trim();
+
+    private static string SerializeCanonicalJson(JsonElement value)
+    {
+        using MemoryStream stream = new();
+        using Utf8JsonWriter writer = new(stream);
+        WriteCanonicalValue(writer, value);
+        writer.Flush();
+        return System.Text.Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    private static void WriteCanonicalValue(Utf8JsonWriter writer, JsonElement value)
+    {
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.Object:
+                writer.WriteStartObject();
+                foreach (JsonProperty property in value.EnumerateObject().OrderBy(p => p.Name, StringComparer.Ordinal))
+                {
+                    writer.WritePropertyName(property.Name);
+                    WriteCanonicalValue(writer, property.Value);
+                }
+                writer.WriteEndObject();
+                break;
+            case JsonValueKind.Array:
+                writer.WriteStartArray();
+                foreach (JsonElement item in value.EnumerateArray())
+                {
+                    WriteCanonicalValue(writer, item);
+                }
+                writer.WriteEndArray();
+                break;
+            default:
+                value.WriteTo(writer);
+                break;
+        }
+    }
 
     private static string ReadString(JsonElement element, params string[] names)
     {
